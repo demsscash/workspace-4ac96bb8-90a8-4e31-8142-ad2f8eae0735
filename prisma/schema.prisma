@@ -1,0 +1,314 @@
+// ERP Scolaire Mauritanie - Schema de données
+// Système de gestion scolaire adapté au contexte mauritanien
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Établissement scolaire
+model School {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String?  // Nom en arabe
+  address     String
+  phone       String
+  email       String?
+  logo        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  users       User[]
+  students    Student[]
+  classes     SchoolClass[]
+  subjects    Subject[]
+  grades      Grade[]
+  observations Observation[]
+  attendances Attendance[]
+  notifications Notification[]
+  
+  @@map("schools")
+}
+
+// Utilisateurs du système
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String
+  firstNameAr String? // Prénom en arabe
+  lastNameAr  String? // Nom en arabe
+  phone     String?
+  role      UserRole @default(SECRETARY)
+  isActive  Boolean  @default(true)
+  lastLogin DateTime?
+  schoolId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacherClasses TeacherClass[]
+  taughtSubjects Subject[]
+  grades     Grade[]
+  observations Observation[]
+  attendances Attendance[]
+  notifications Notification[]
+  parentStudents ParentStudent[]
+  managedClasses SchoolClass[] @relation("ClassTeacher")
+  
+  @@map("users")
+}
+
+// Rôles utilisateurs
+enum UserRole {
+  DIRECTOR
+  SECRETARY
+  TEACHER
+  PARENT
+}
+
+// Élèves
+model Student {
+  id            String   @id @default(cuid())
+  studentNumber String   @unique // Format: ANNÉE-SÉQUENCE
+  firstName     String
+  lastName      String
+  firstNameAr   String?  // Prénom en arabe
+  lastNameAr    String?  // Nom en arabe
+  dateOfBirth   DateTime
+  placeOfBirth  String?
+  gender        Gender
+  address       String?
+  photo         String?
+  isActive      Boolean  @default(true)
+  schoolId      String
+  classId       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  school        School     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class         SchoolClass? @relation(fields: [classId], references: [id])
+  grades        Grade[]
+  observations  Observation[]
+  attendances   Attendance[]
+  parents       ParentStudent[]
+  notifications Notification[]
+  
+  @@map("students")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+// Classes
+model SchoolClass {
+  id          String   @id @default(cuid())
+  name        String   // CP1, CP2, CE1, CE2, CM1, CM2
+  level       String   // Niveau: Primaire
+  capacity    Int      @default(40)
+  schoolId    String
+  teacherId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  teacher     User?    @relation("ClassTeacher", fields: [teacherId], references: [id])
+  students    Student[]
+  subjects    Subject[]
+  teacherClasses TeacherClass[]
+  
+  @@map("classes")
+}
+
+// Matières avec barèmes mauritaniens
+model Subject {
+  id          String   @id @default(cuid())
+  name        String   // Mathématiques, Arabe, Français, etc.
+  nameAr      String?  // Nom en arabe
+  maxScore    Int      // Barème maximum selon le système mauritanien
+  coefficient Int      @default(1)
+  schoolId    String
+  classId     String
+  teacherId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  class       SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher     User?    @relation(fields: [teacherId], references: [id])
+  grades      Grade[]
+  
+  @@map("subjects")
+}
+
+// Notes (Système mauritanien)
+model Grade {
+  id          String   @id @default(cuid())
+  score       Float    // Note obtenue
+  maxScore    Float    // Barème de la matière
+  percentage  Float    // Pourcentage calculé automatiquement
+  term        String   // Trimestre: T1, T2, T3
+  examType    String   // DS, Composition, etc.
+  comment     String?
+  studentId   String
+  subjectId   String
+  teacherId   String
+  schoolId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher     User     @relation(fields: [teacherId], references: [id])
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  @@map("grades")
+}
+
+// Observations (Cahier d'observation numérique)
+model Observation {
+  id          String       @id @default(cuid())
+  content     String
+  contentAr   String?      // Contenu en arabe
+  type        ObservationType
+  severity    Severity     @default(INFO)
+  studentId   String
+  teacherId   String
+  schoolId    String
+  isRead      Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  // Relations
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher     User         @relation(fields: [teacherId], references: [id])
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  @@map("observations")
+}
+
+enum ObservationType {
+  BEHAVIOR
+  PEDAGOGICAL
+  POSITIVE
+  NEGATIVE
+}
+
+enum Severity {
+  INFO
+  ATTENTION
+  IMPORTANT
+  URGENT
+}
+
+// Présences
+model Attendance {
+  id          String   @id @default(cuid())
+  date        DateTime
+  status      AttendanceStatus
+  reason      String?
+  studentId   String
+  teacherId   String?
+  schoolId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher     User?    @relation(fields: [teacherId], references: [id])
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, date])
+  @@map("attendances")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// Notifications
+model Notification {
+  id          String           @id @default(cuid())
+  title       String
+  content     String
+  contentAr   String?          // Contenu en arabe
+  type        NotificationType
+  channel     NotificationChannel
+  recipientId String           // ID de l'utilisateur destinataire
+  studentId   String?          // ID de l'élève concerné (optionnel)
+  schoolId    String
+  isRead      Boolean          @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime         @default(now())
+  
+  // Relations
+  school      School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  recipient   User             @relation(fields: [recipientId], references: [id])
+  student     Student?         @relation(fields: [studentId], references: [id])
+  
+  @@map("notifications")
+}
+
+enum NotificationType {
+  ABSENCE
+  GRADE
+  OBSERVATION
+  MEETING
+  GENERAL
+  PAYMENT
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+// Relation Parents-Élèves
+model ParentStudent {
+  id        String   @id @default(cuid())
+  parentId  String
+  studentId String
+  relation  String   // Père, Mère, Tuteur, etc.
+  createdAt DateTime @default(now())
+  
+  // Relations
+  parent    User     @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  @@unique([parentId, studentId])
+  @@map("parent_student")
+}
+
+// Relation Professeurs-Classes
+model TeacherClass {
+  id        String   @id @default(cuid())
+  teacherId String
+  classId   String
+  role      String   @default("TEACHER") // Professeur principal, etc.
+  createdAt DateTime @default(now())
+  
+  // Relations
+  teacher   User       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class     SchoolClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  
+  @@unique([teacherId, classId])
+  @@map("teacher_class")
+}
